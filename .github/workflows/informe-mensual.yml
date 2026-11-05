@@ -1,0 +1,52 @@
+name: Informe mensual
+
+on:
+  schedule:
+    # Día 1 de cada mes a las 07:00 UTC (08:00 o 09:00 en España)
+    - cron: "0 7 1 * *"
+  workflow_dispatch:
+    inputs:
+      mes:
+        description: "Mes del informe (AAAA-MM). Vacío = el mes anterior"
+        required: false
+        default: ""
+
+permissions:
+  contents: write   # solo para el commit mensual que evita que GitHub desactive la tarea
+
+concurrency:
+  group: informe-mensual
+  cancel-in-progress: false
+
+jobs:
+  informe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r informe/requirements.txt
+
+      - name: Generar y enviar el informe
+        env:
+          MES: ${{ inputs.mes }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python informe/informe_mensual.py
+
+      - name: Dejar constancia (evita que GitHub desactive las tareas programadas)
+        run: |
+          date -u +%F > informe/ultima-ejecucion.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add informe/ultima-ejecucion.txt
+          git commit -m "Informe mensual ejecutado" || exit 0
+          git push
