@@ -50,9 +50,10 @@ header.top{padding-block:20px 8px}
 .pos{color:var(--win)} .neg{color:var(--loss)}
 
 nav.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
-nav.tabs .wrap{display:flex;gap:4px}
-nav.tabs a{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-decoration:none;padding:12px 14px 10px;border-bottom:3px solid transparent}
+nav.tabs .wrap{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+nav.tabs a{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-decoration:none;padding:12px 11px 10px;border-bottom:3px solid transparent;white-space:nowrap}
 nav.tabs a[aria-current="page"]{color:var(--ink);border-color:var(--accent)}
+@media (max-width:480px){nav.tabs .wrap{gap:0;padding-left:8px;padding-right:8px}nav.tabs a{font-size:12.5px;letter-spacing:0;padding:12px 5px 10px;flex:1;text-align:center}}
 nav.tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
 main{padding-block:20px 60px}
@@ -133,6 +134,30 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
 .login{min-height:100vh;display:grid;place-items:center;padding:24px 16px}
 .login .card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:24px;display:grid;gap:14px}
 .login h1{font-family:var(--display);font-size:34px;font-weight:700;margin:0;line-height:1}
+
+/* calendario */
+.cal-head{display:flex;align-items:center;gap:8px}
+.cal-head h2{margin:0;flex:1;text-align:center}
+.cal-nav{padding:6px 16px;font-size:22px;line-height:1}
+.panel.calp{padding:12px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-dow{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--muted);text-align:center;padding:2px 0 4px;text-transform:uppercase}
+.day{font:inherit;position:relative;aspect-ratio:1;min-height:46px;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;padding:4px 5px;text-align:left}
+.day .dn{font-size:11px;font-weight:600;color:var(--muted);line-height:1}
+.day .dv{font-family:var(--display);font-weight:700;font-size:clamp(13px,3.7vw,20px);text-align:center;line-height:1;white-space:nowrap;min-height:1em}
+.day.none{background:transparent;border-style:dashed}
+.day.pos{background:color-mix(in srgb,var(--win) calc(var(--i)*100%),var(--surface));border-color:transparent}
+.day.neg{background:color-mix(in srgb,var(--loss) calc(var(--i)*100%),var(--surface));border-color:transparent}
+.day.zero{background:var(--push-bg);border-color:transparent}
+.day.pendonly{background:var(--pend-bg);border-color:transparent}
+.day.pendonly .dv{color:var(--pend);font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.day.today{outline:2px solid var(--accent);outline-offset:1px}
+.day.sel{box-shadow:inset 0 0 0 2px var(--ink)}
+.day .pd{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--pend)}
+.day:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cal-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}
+.cal-legend span{display:inline-flex;align-items:center;gap:6px}
+.cal-legend i{display:inline-block;width:12px;height:12px;border-radius:3px}
 @media (prefers-reduced-motion:no-preference){.chip,.btn{transition:background .15s,color .15s,border-color .15s}}
 </style>
 </head>
@@ -162,6 +187,7 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
   <a href="#resumen" data-view="resumen">Resumen</a>
   <a href="#nueva" data-view="nueva">Nueva</a>
   <a href="#historial" data-view="historial">Historial</a>
+  <a href="#calendario" data-view="calendario">Calendario</a>
 </div></nav>
 
 <main class="wrap">
@@ -228,6 +254,26 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
       <div class="slips" id="slips"></div>
     </div>
   </section>
+
+  <section class="view" id="v-calendario" hidden>
+    <div class="cal-head">
+      <button class="btn ghost cal-nav" type="button" data-act="calprev" aria-label="Mes anterior">‹</button>
+      <h2 id="calTitle">Calendario</h2>
+      <button class="btn ghost cal-nav" type="button" id="calNext" data-act="calnext" aria-label="Mes siguiente">›</button>
+      <button class="linkbtn" type="button" data-act="caltoday">Hoy</button>
+    </div>
+    <div class="kpis" id="calKpis"></div>
+    <div class="panel calp">
+      <div class="cal-grid" id="calGrid"></div>
+      <p class="hint cal-legend">
+        <span><i style="background:var(--win)"></i>Día con beneficio</span>
+        <span><i style="background:var(--loss)"></i>Día con pérdida</span>
+        <span><i style="background:var(--pend)"></i>Apuestas pendientes</span>
+        <span>Cuenta solo apuestas ganadas y perdidas. Cuanto más intenso el color, más dinero.</span>
+      </p>
+    </div>
+    <div id="calDetail"></div>
+  </section>
 </main>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -239,7 +285,7 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
 const CFG=window.APP_CONFIG||{};
 const SUPA=!!(CFG.supabaseUrl&&CFG.supabaseAnonKey);
 const BASE=SUPA?String(CFG.supabaseUrl).replace(/\/+$/,""):"";
-const S={bets:[],bank0:1000,mode:SUPA?"supa":"local",authed:false,status:SUPA?"loading":"local",editing:null,confirmDel:null,filter:"todas",email:"",busy:0};
+const S={calY:null,calM:null,calDay:null,bets:[],bank0:1000,mode:SUPA?"supa":"local",authed:false,status:SUPA?"loading":"local",editing:null,confirmDel:null,filter:"todas",email:"",busy:0};
 const RES=["pendiente","ganada","perdida","nula"];
 const RLAB={pendiente:"Pendiente",ganada:"Ganada",perdida:"Perdida",nula:"Nula"};
 const $=id=>document.getElementById(id);
@@ -387,7 +433,7 @@ function render(){
   if(S.mode==="local"){bn.hidden=false;bn.textContent="Modo local: tus apuestas se guardan solo en este navegador y no se ven desde otros dispositivos. Para tenerlas en el móvil y en el ordenador, conecta la base de datos (ver LEEME.md)."}
   else if(S.status==="offline"){bn.hidden=false;bn.textContent="No hay conexión con la base de datos. Lo que ves puede no estar al día y los cambios no se guardarán hasta que vuelva."}
   else bn.hidden=true;
-  renderKpis(c);renderChart(c);renderPending(c);renderLists(c);renderTables(c);renderHistory(c);
+  renderKpis(c);renderChart(c);renderPending(c);renderLists(c);renderTables(c);renderHistory(c);renderCalendar(c);
   if(document.activeElement!==$("iBank0"))$("iBank0").value=fN(c.bank0,2);
   updatePreview();
 }
@@ -493,6 +539,71 @@ function renderHistory(c){
   const list=[...c.all].reverse().filter(b=>S.filter==="todas"||b.result===S.filter);
   $("slips").innerHTML=list.length?list.map(b=>slip(b,{tag:true})).join("")
     :`<div class="empty">${c.all.length?"No hay apuestas con este filtro.":"Todavía no hay apuestas. Añade la primera en la pestaña <b>Nueva</b>: partido, importe y cuota."}</div>`;
+}
+
+/* ================= CALENDARIO ================= */
+const MESES_L=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const ymKey=(y,m)=>y+"-"+String(m+1).padStart(2,"0");
+const fShort=v=>{const a=Math.abs(v);if(a<0.005)return "0";
+  const s=a>=1000?(a/1000).toLocaleString("es-ES",{maximumFractionDigits:1})+"k":a.toLocaleString("es-ES",{minimumFractionDigits:0,maximumFractionDigits:2});
+  return (v>0?"+":"−")+s};
+function renderCalendar(c){
+  if(!$("calGrid"))return;
+  const now=new Date();
+  if(S.calY==null){S.calY=now.getFullYear();S.calM=now.getMonth()}
+  const y=S.calY,m=S.calM,dim=new Date(y,m+1,0).getDate(),key=ymKey(y,m);
+  const isCurrent=(y===now.getFullYear()&&m===now.getMonth());
+  // agrupar por día
+  const by={};
+  c.all.forEach(b=>{if(!b.date||b.date.slice(0,7)!==key)return;const d=+b.date.slice(8,10);
+    const o=by[d]||(by[d]={p:0,res:0,pend:0,bets:[]});o.bets.push(b);
+    if(isRes(b)){o.p+=pl(b);o.res++}else if(b.result==="pendiente")o.pend++});
+  const days=Object.keys(by).map(Number).filter(d=>by[d].res>0);
+  const total=days.reduce((s,d)=>s+by[d].p,0);
+  const pos=days.filter(d=>by[d].p>0.005).length, neg=days.filter(d=>by[d].p<-0.005).length;
+  const best=days.length?days.reduce((a,d)=>by[d].p>by[a].p?d:a):null;
+  const worst=days.length?days.reduce((a,d)=>by[d].p<by[a].p?d:a):null;
+  const maxAbs=Math.max(1,...days.map(d=>Math.abs(by[d].p)));
+  // cabecera y navegación
+  $("calTitle").textContent=cap(MESES_L[m])+" "+y;
+  const latest=c.all.reduce((mx,b)=>b.date&&b.date.slice(0,7)>mx?b.date.slice(0,7):mx,ymKey(now.getFullYear(),now.getMonth()));
+  $("calNext").disabled=key>=latest;
+  // tarjetas del mes
+  const dl=d=>d+" "+MES[m];
+  $("calKpis").innerHTML=[
+    kpi("Beneficio del mes",days.length?fS(total):"–",days.length+" "+(days.length===1?"día":"días")+" con apuestas resueltas",cls(total)),
+    kpi("Días en verde / rojo",pos+" / "+neg,"días con beneficio / con pérdida"),
+    kpi("Mejor día",best?fS(by[best].p):"–",best?dl(best):"",best?cls(by[best].p):""),
+    kpi("Peor día",worst?fS(by[worst].p):"–",worst?dl(worst):"",worst?cls(by[worst].p):"")
+  ].join("");
+  // selección de día (hoy por defecto en el mes actual)
+  let sel=S.calDay===null?(isCurrent?today():""):S.calDay;
+  if(sel&&sel.slice(0,7)!==key)sel="";
+  // cuadrícula
+  const off=(new Date(y,m,1).getDay()+6)%7;
+  let h=["L","M","X","J","V","S","D"].map(x=>`<div class="cal-dow">${x}</div>`).join("");
+  for(let i=0;i<off;i++)h+="<div></div>";
+  for(let d=1;d<=dim;d++){
+    const o=by[d],ds=key+"-"+String(d).padStart(2,"0");
+    let k="none",val="",label=d+" de "+MESES_L[m]+": sin apuestas";
+    if(o&&o.res>0){
+      k=o.p>0.005?"pos":o.p<-0.005?"neg":"zero";val=fShort(o.p);
+      label=d+" de "+MESES_L[m]+": "+fS(o.p)+(o.pend?", "+o.pend+" pendientes":"");
+    }else if(o&&o.pend>0){k="pendonly";val="pend.";label=d+" de "+MESES_L[m]+": "+o.pend+" apuestas pendientes"}
+    else if(o){k="zero";val="0";label=d+" de "+MESES_L[m]+": apuestas nulas"}
+    const inten=(k==="pos"||k==="neg")?(0.16+0.42*Math.min(1,Math.abs(o.p)/maxAbs)).toFixed(2):0;
+    h+=`<button type="button" class="day ${k}${ds===today()?" today":""}${ds===sel?" sel":""}" data-act="day" data-d="${ds}" style="--i:${inten}" aria-label="${esc(label)}" aria-pressed="${ds===sel}">
+      <span class="dn">${d}</span><span class="dv num">${val}</span>${o&&o.pend&&o.res>0?'<span class="pd" title="Con apuestas pendientes"></span>':""}</button>`;
+  }
+  $("calGrid").innerHTML=h;
+  // detalle del día
+  const det=$("calDetail");
+  if(!sel){det.innerHTML=`<p class="hint">Toca un día para ver sus apuestas.</p>`;return}
+  const dd=+sel.slice(8,10),o=by[dd];
+  const title=cap(new Date(y,m,dd).toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long"}));
+  const amount=o&&o.res>0?` · <span class="${cls(o.p)}">${fS(o.p)}</span>`:"";
+  det.innerHTML=`<h2>${title}${amount}</h2>`+(o?`<div class="slips">${[...o.bets].reverse().map(b=>slip(b,{tag:true})).join("")}</div>`:`<div class="empty">No hay apuestas este día.</div>`);
 }
 
 /* ================= DATOS Y ESCRITURA ================= */
@@ -623,6 +734,9 @@ document.addEventListener("click",async e=>{
   const t=e.target.closest("[data-act]");if(!t)return;
   const act=t.dataset.act,id=t.dataset.id;
   if(act==="filter"){S.filter=t.dataset.f;render();return}
+  if(act==="calprev"||act==="calnext"){const dt=new Date(S.calY,S.calM+(act==="calnext"?1:-1),1);S.calY=dt.getFullYear();S.calM=dt.getMonth();S.calDay=null;render();return}
+  if(act==="caltoday"){const dt=new Date();S.calY=dt.getFullYear();S.calM=dt.getMonth();S.calDay=null;render();return}
+  if(act==="day"){S.calDay=(S.calDay===t.dataset.d)?"":t.dataset.d;render();const f=document.querySelector('.day[data-d="'+t.dataset.d+'"]');if(f)f.focus({preventScroll:true});return}
   if(act==="edit"){startEdit(id);return}
   if(act==="del"){S.confirmDel=id;render();return}
   if(act==="delno"){S.confirmDel=null;render();return}
@@ -648,7 +762,7 @@ $("fLogin").addEventListener("submit",async e=>{
 $("bLogout").addEventListener("click",async()=>{await Supa.signOut();S.authed=false;S.bets=[];S.email="";S.status="loading";render();location.hash="resumen"});
 
 /* ---------- vistas ---------- */
-const VIEWS=["resumen","nueva","historial"];
+const VIEWS=["resumen","nueva","historial","calendario"];
 function route(){
   const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):"resumen";
   VIEWS.forEach(n=>{$("v-"+n).hidden=n!==v});
