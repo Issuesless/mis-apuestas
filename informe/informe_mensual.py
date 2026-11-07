@@ -89,7 +89,7 @@ def hexc(c):
 
 
 # ------------------------------------------------------------------ datos
-def api_get(base, key, path):
+def api_get(base, key, path, missing_ok=False):
     headers = {"apikey": key, "Accept": "application/json"}
     if key.count(".") == 2:  # clave antigua tipo JWT (service_role)
         headers["Authorization"] = "Bearer " + key
@@ -98,6 +98,8 @@ def api_get(base, key, path):
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
+        if missing_ok and e.code == 404:  # tabla aún no creada (movimientos.sql sin ejecutar)
+            return None
         sys.exit(f"Error al leer la base de datos (HTTP {e.code}). Revisa SUPABASE_URL y SUPABASE_SERVICE_KEY.")
     except urllib.error.URLError:
         sys.exit("No se pudo conectar con la base de datos. ¿Está pausada o la URL es correcta?")
@@ -113,7 +115,18 @@ def fetch_data(base, key):
         off += 1000
     st = api_get(base, key, "/rest/v1/settings?select=initial_bank&limit=1")
     bank0 = float(st[0]["initial_bank"]) if st else DEFAULT_BANK
-    return rows, bank0
+    movs, off = [], 0
+    while True:
+        page = api_get(base, key, f"/rest/v1/movements?select=*&order=mov_date.asc,created_at.asc&limit=1000&offset={off}",
+                       missing_ok=True)
+        if page is None:
+            print("Aviso: no existe la tabla de retiradas (movimientos.sql); el informe sale sin ellas.")
+            break
+        movs += page
+        if len(page) < 1000:
+            break
+        off += 1000
+    return rows, bank0, movs
 
 
 def normalize(rows):
@@ -132,6 +145,25 @@ def normalize(rows):
             continue
     out.sort(key=lambda b: (b["date"], b["created"]))
     return out
+
+
+def normalize_movs(rows):
+    out = []
+    for r in rows or []:
+        try:
+            if r.get("kind") not in ("retirada", "deposito"):
+                continue
+            out.append({"kind": r["kind"], "amount": float(r["amount"]),
+                        "date": date.fromisoformat(str(r["mov_date"])[:10]),
+                        "note": str(r.get("note") or ""), "created": str(r.get("created_at") or "")})
+        except (KeyError, ValueError, TypeError):
+            continue
+    out.sort(key=lambda x: (x["date"], x["created"]))
+    return out
+
+
+def mov_delta(x):
+    return x["amount"] if x["kind"] == "deposito" else -x["amount"]
 
 
 def pl(b):
@@ -293,16 +325,29 @@ def grid_table(data, widths, aligns, header=True, repeat=True):
     return t
 
 
-def build_pdf(path, bets, bank0, year, month):
+def build_pdf(path, bets, bank0, year, month, movs=()):
     st = styles()
     first = date(year, month, 1)
     nxt = date(year + (month == 12), month % 12 + 1, 1)
     before = [b for b in bets if b["date"] < first]
     in_month = [b for b in bets if first <= b["date"] < nxt]
     upto = [b for b in bets if b["date"] < nxt]
-    start_bank = bank0 + sum(pl(b) for b in before if resolved(b))
+    mv_before = [x for x in movs if x["date"] < first]
+    mv_month = [x for x in movs if first <= x["date"] < nxt]
+    mv_upto = [x for x in movs if x["date"] < nxt]
+    # dinero en la casa a inicio de mes: bank inicial + beneficio + depósitos − retiradas
+    start_bank = bank0 + sum(pl(b) for b in before if resolved(b)) + sum(mov_delta(x) for x in mv_before)
     m = stats(in_month, start_bank)
     tot = stats(upto, bank0)
+    w_m = sum(x["amount"] for x in mv_month if x["kind"] == "retirada")
+    d_m = sum(x["amount"] for x in mv_month if x["kind"] == "deposito")
+    w_t = sum(x["amount"] for x in mv_upto if x["kind"] == "retirada")
+    d_t = sum(x["amount"] for x in mv_upto if x["kind"] == "deposito")
+    contributed = bank0 + d_t
+    m["end_bank"] = start_bank + m["profit"] + d_m - w_m
+    m["withdrawn"], m["deposited"] = w_m, d_m
+    tot["end_bank"] = contributed + tot["profit"] - w_t
+    tot["withdrawn"], tot["deposited"], tot["contributed"] = w_t, d_t, contributed
     title = f"{MESES[month - 1].capitalize()} {year}"
 
     W = A4[0] - 32 * mm
@@ -321,7 +366,8 @@ def build_pdf(path, bets, bank0, year, month):
     kc = [kpi_cell(st, "Beneficio del mes", eur_s(m["profit"]), f"{m['n']} apuestas resueltas", color_for(m["profit"])),
           kpi_cell(st, "Yield", pct_s(m["roi"]) if m["n"] else "-", f"sobre {eur(m['staked'])} apostados", color_for(m["roi"])),
           kpi_cell(st, "Acierto", pct(m["hit"]) if m["n"] else "-", f"{m['won']} G · {m['lost']} P · {m['nul']} N"),
-          kpi_cell(st, "Bank a fin de mes", eur(m["end_bank"]), f"inicio de mes: {eur(start_bank)}")]
+          kpi_cell(st, "En la casa a fin de mes", eur(m["end_bank"]),
+                   f"inicio de mes: {eur(start_bank)}" + (f" · retirado {eur(w_m)}" if w_m else ""))]
     kt = Table([kc], colWidths=[W / 4] * 4)
     kt.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), SOFT), ("VALIGN", (0, 0), (-1, -1), "TOP"),
                             ("LINEAFTER", (0, 0), (-2, -1), 2, colors.white),
@@ -333,7 +379,8 @@ def build_pdf(path, bets, bank0, year, month):
     story.append(Paragraph("Evolución del bank en el mes", st["h2"]))
     if m["n"]:
         story.append(Image(chart_png(in_month, start_bank, year, month), width=W, height=W * 2.5 / 7.0))
-        story.append(Paragraph("Cada punto es una apuesta resuelta (fecha en el eje). Línea discontinua: bank a inicio de mes.", st["small"]))
+        story.append(Paragraph("Cada punto es una apuesta resuelta (fecha en el eje). Línea discontinua: dinero en la casa a inicio de mes. "
+                               "La curva muestra solo el resultado de las apuestas, sin retiradas ni depósitos.", st["small"]))
     else:
         story.append(Paragraph("Este mes no hay apuestas resueltas, así que no hay curva que dibujar.", st["small"]))
 
@@ -351,9 +398,9 @@ def build_pdf(path, bets, bank0, year, month):
         ("Máxima caída del mes", f"{eur_s(m['max_dd'])} ({pct_s(m['max_dd_p'])})" if m["n"] else "-", color_for(m["max_dd"])),
     ], half)
     right = kv_table(st, [
-        ("Bank actual (fin de mes)", eur(tot["end_bank"])),
+        ("Dinero en la casa (fin de mes)", eur(tot["end_bank"])),
         ("Beneficio acumulado", eur_s(tot["profit"]), color_for(tot["profit"])),
-        ("Crecimiento sobre el bank inicial", pct_s(tot["profit"] / bank0) if bank0 else "-", color_for(tot["profit"])),
+        ("Crecimiento sobre lo aportado", pct_s(tot["profit"] / contributed) if contributed else "-", color_for(tot["profit"])),
         ("Yield acumulado", pct_s(tot["roi"]) if tot["n"] else "-", color_for(tot["roi"])),
         ("Acierto acumulado", pct(tot["hit"]) if tot["n"] else "-"),
         ("Apuestas resueltas", f"{tot['n']}"),
@@ -377,6 +424,37 @@ def build_pdf(path, bets, bank0, year, month):
             f'(<font color="{hexc(color_for(pl(b)))}">{eur_s(pl(b))}</font>) · '
             f'Peor apuesta: <b>{esc(w["match"])}</b> (<font color="{hexc(color_for(pl(w)))}">{eur_s(pl(w))}</font>)', st["base"]))
 
+    # retiradas y depósitos
+    if movs:
+        rec = w_t / contributed if contributed else 0.0
+        kv = kv_table(st, [
+            ("Retirado este mes", eur(w_m) if w_m else "-"),
+            ("Depositado este mes", eur(d_m) if d_m else "-"),
+            ("Retirado en total", eur(w_t)),
+            ("Capital aportado (bank inicial + depósitos)", eur(contributed)),
+            ("Inversión recuperada", pct(rec, 0)),
+            ("Dinero propio aún en riesgo", eur(max(0.0, contributed - w_t))),
+            ("Beneficio ya retirado", f"{eur(min(w_t, tot['profit']))} ({pct(min(1.0, w_t / tot['profit']), 0)})"
+             if tot["profit"] > 0 else "-"),
+        ], half)
+        if mv_month:
+            rows = [["FECHA", "TIPO", "NOTA", "IMPORTE"]]
+            for x in mv_month:
+                rows.append([f"{x['date'].day:02d}/{x['date'].month:02d}", "Retirada" if x["kind"] == "retirada" else "Depósito",
+                             Paragraph(esc(x["note"]) or "-", st["cell"]),
+                             ("-" if x["kind"] == "retirada" else "+") + eur(x["amount"])])
+            right_mv = grid_table(rows, [half * 0.2, half * 0.24, half * 0.3, half * 0.26], ["LEFT", "LEFT", "LEFT", "RIGHT"], repeat=False)
+        else:
+            right_mv = Paragraph("Este mes no hay retiradas ni depósitos.", st["small"])
+        tw = Table([[Paragraph("Retiradas y depósitos", st["h2"]), "", Paragraph("Movimientos del mes", st["h2"])],
+                    [kv, "", right_mv]], colWidths=[half, 12 * mm, half])
+        tw.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+        story.append(Spacer(1, 6))
+        story.append(KeepTogether([tw, Paragraph("Las retiradas y los depósitos no cuentan en el beneficio, el yield ni el acierto: "
+                                                 "solo cambian el dinero que tienes en la casa.", st["small"])]))
+
     # tramos de cuota
     if m["n"]:
         rows = [["TRAMO", "APUESTAS", "ACIERTO", "APOSTADO", "BENEFICIO", "YIELD"]]
@@ -396,16 +474,22 @@ def build_pdf(path, bets, bank0, year, month):
             d["n"] += 1
             d["st"] += b["stake"]
             d["p"] += pl(b)
+    for x in mv_upto:
+        by_month.setdefault((x["date"].year, x["date"].month), {"n": 0, "st": 0.0, "p": 0.0})
     keys = sorted(by_month)[-6:]
     if keys:
-        rows = [["MES", "APUESTAS", "APOSTADO", "BENEFICIO", "YIELD", "BANK A FIN DE MES"]]
+        wcol = bool(movs)
+        rows = [["MES", "APUESTAS", "APOSTADO", "BENEFICIO", "YIELD"] + (["RETIRADO"] if wcol else []) + ["EN LA CASA A FIN DE MES"]]
         for k in keys:
             d = by_month[k]
-            end = bank0 + sum(pl(b) for b in upto if resolved(b) and (b["date"].year, b["date"].month) <= k)
+            end = (bank0 + sum(pl(b) for b in upto if resolved(b) and (b["date"].year, b["date"].month) <= k)
+                   + sum(mov_delta(x) for x in mv_upto if (x["date"].year, x["date"].month) <= k))
+            wk = sum(x["amount"] for x in mv_upto if x["kind"] == "retirada" and (x["date"].year, x["date"].month) == k)
             rows.append([f"{MESES_CORTO[k[1] - 1]} {k[0]}", str(d["n"]), eur(d["st"]), eur_s(d["p"]),
-                         pct_s(d["p"] / d["st"] if d["st"] else 0), eur(end)])
-        t = grid_table(rows, [W * 0.16, W * 0.14, W * 0.17, W * 0.18, W * 0.14, W * 0.21],
-                       ["LEFT", "RIGHT", "RIGHT", "RIGHT", "RIGHT", "RIGHT"], repeat=False)
+                         pct_s(d["p"] / d["st"] if d["st"] else 0)] + ([eur(wk) if wk else "-"] if wcol else []) + [eur(end)])
+        widths = ([W * 0.13, W * 0.12, W * 0.15, W * 0.15, W * 0.11, W * 0.14, W * 0.20] if wcol
+                  else [W * 0.16, W * 0.14, W * 0.17, W * 0.18, W * 0.14, W * 0.21])
+        t = grid_table(rows, widths, ["LEFT"] + ["RIGHT"] * (len(widths) - 1), repeat=False)
         story.append(KeepTogether([Paragraph("Últimos meses", st["h2"]), t]))
 
     # listado
@@ -465,7 +549,9 @@ def send_email(pdf_path, year, month, m, tot):
         resumen = "Este mes no hay apuestas resueltas."
     msg.set_content(
         f"Hola,\n\nAdjunto el informe de apuestas de {title}.\n\n{resumen}\n"
-        f"Bank a fin de mes: {eur(m['end_bank'])} · Beneficio acumulado: {eur_s(tot['profit'])}.\n\n"
+        f"En la casa a fin de mes: {eur(m['end_bank'])} · Beneficio acumulado: {eur_s(tot['profit'])}.\n"
+        + (f"Retirado este mes: {eur(m['withdrawn'])} · Retirado en total: {eur(tot['withdrawn'])}.\n" if tot.get("withdrawn") else "")
+        + "\n"
         "Generado automáticamente.\n")
     with open(pdf_path, "rb") as f:
         msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=os.path.basename(pdf_path))
@@ -507,16 +593,16 @@ def main():
     if a.desde_json:
         with open(a.desde_json, encoding="utf-8") as f:
             raw = json.load(f)
-        rows, bank0 = raw["bets"], float(raw.get("initial_bank", DEFAULT_BANK))
+        rows, bank0, mrows = raw["bets"], float(raw.get("initial_bank", DEFAULT_BANK)), raw.get("movements", [])
     else:
         base, key = os.environ.get("SUPABASE_URL", "").strip(), os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
         if not (base and key):
             sys.exit("Faltan SUPABASE_URL o SUPABASE_SERVICE_KEY. Añádelos en Settings → Secrets del repositorio.")
-        rows, bank0 = fetch_data(base, key)
+        rows, bank0, mrows = fetch_data(base, key)
 
     bets = normalize(rows)
     out = a.salida or f"informe-{year}-{month:02d}.pdf"
-    m, tot, _ = build_pdf(out, bets, bank0, year, month)
+    m, tot, _ = build_pdf(out, bets, bank0, year, month, normalize_movs(mrows))
     print(f"PDF generado para {year}-{month:02d} ({len(bets)} apuestas en total).")
     if a.no_enviar:
         return
