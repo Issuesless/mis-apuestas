@@ -121,7 +121,7 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .preview{background:var(--sunk);border-radius:8px;padding:12px 14px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .preview div{min-width:0}
-.preview b{display:block;font-family:var(--display);font-size:22px;font-weight:700}
+.preview b{display:block;font-family:var(--display);font-size:clamp(17px,5vw,22px);font-weight:700}
 .preview span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .err{color:var(--loss);font-size:13px;min-height:1em;margin:0}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:20;max-width:90vw;text-align:center}
@@ -158,6 +158,25 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
 .cal-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}
 .cal-legend span{display:inline-flex;align-items:center;gap:6px}
 .cal-legend i{display:inline-block;width:12px;height:12px;border-radius:3px}
+/* retiradas y depósitos */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line);border-radius:10px;background:var(--sunk);padding:3px;max-width:560px}
+.seg button{font:inherit;font-weight:600;font-size:14px;border:0;background:transparent;color:var(--muted);padding:9px 6px;border-radius:7px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rec{display:flex;align-items:baseline;justify-content:space-between;gap:6px 12px;flex-wrap:wrap}
+.rec b{font-family:var(--display);font-size:38px;font-weight:700;line-height:1}
+.prog{height:10px;border-radius:999px;background:var(--sunk);overflow:hidden;margin:10px 0 6px;border:1px solid var(--line)}
+.prog i{display:block;height:100%;background:var(--accent);border-radius:inherit}
+.movhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.movhead h2{margin:0}
+@media (max-width:400px){.movgrid td,.movgrid th{padding-left:4px;padding-right:4px;font-size:13px}.movgrid th{font-size:10px;letter-spacing:0}}
+.movgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;margin-top:14px}
+@media (max-width:760px){.movgrid{grid-template-columns:minmax(0,1fr)}}
+.tag.retirada,.tag.deposito{background:var(--sunk);color:var(--accent);border:1px solid var(--line)}
+.slip-pl.mv{color:var(--accent)}
+.chip[data-r="mov"].on{background:var(--sunk);color:var(--accent);border-color:var(--accent)}
+.mvk{display:inline-block;font-size:9px;font-weight:700;line-height:1;padding:2px 3px;border-radius:3px;background:var(--accent);color:var(--accent-ink);vertical-align:1px;margin-left:2px}
+.chart .lg{font-size:11px}
 @media (prefers-reduced-motion:no-preference){.chip,.btn{transition:background .15s,color .15s,border-color .15s}}
 </style>
 </head>
@@ -197,6 +216,7 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
     <div class="kpis" id="kpis"></div>
     <div class="panel"><h2>Evolución del bank</h2><div id="chartBox"></div></div>
     <div id="pendingBox"></div>
+    <div class="panel" id="movPanel"></div>
     <div class="cols">
       <div class="panel"><h2>Rentabilidad</h2><dl class="list" id="lRent"></dl></div>
       <div class="panel"><h2>Riesgo y rachas</h2><dl class="list" id="lRisk"></dl></div>
@@ -222,6 +242,30 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
   </section>
 
   <section class="view" id="v-nueva" hidden>
+    <div class="seg" id="kindSeg" role="group" aria-label="Qué quieres anotar">
+      <button type="button" data-act="kind" data-k="apuesta" aria-pressed="true">Apuesta</button>
+      <button type="button" data-act="kind" data-k="retirada" aria-pressed="false">Retirada</button>
+      <button type="button" data-act="kind" data-k="deposito" aria-pressed="false">Depósito</button>
+    </div>
+    <form class="bet" id="fMov" novalidate hidden>
+      <h2 id="movTitle">Nueva retirada</h2>
+      <p class="hint" id="movHelp"></p>
+      <div class="row2">
+        <div class="field"><label for="mAmount">Importe (€)</label><input id="mAmount" inputmode="decimal" placeholder="100" autocomplete="off"></div>
+        <div class="field"><label for="mDate">Fecha</label><input id="mDate" type="date"></div>
+      </div>
+      <div class="field"><label for="mNote">Nota (opcional)</label><input id="mNote" maxlength="60" placeholder="Bet365, a la cuenta…" autocomplete="off"></div>
+      <div class="preview" aria-live="polite">
+        <div><span>En la casa ahora</span><b class="num" id="mNow">–</b></div>
+        <div><span>Después</span><b class="num" id="mAfter">–</b></div>
+        <div><span id="mThirdL">Recuperado</span><b class="num" id="mThird">–</b></div>
+      </div>
+      <p class="err" id="movErr"></p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" type="submit" id="bSaveMov">Guardar retirada</button>
+        <button class="btn ghost" type="button" id="bCancelMov" hidden>Cancelar edición</button>
+      </div>
+    </form>
     <form class="bet" id="fBet" novalidate>
       <h2 id="formTitle">Nueva apuesta</h2>
       <div class="field"><label for="iMatch">Partido</label><input id="iMatch" placeholder="Real Madrid - Barcelona" autocomplete="off" maxlength="120"></div>
@@ -269,7 +313,8 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
         <span><i style="background:var(--win)"></i>Día con beneficio</span>
         <span><i style="background:var(--loss)"></i>Día con pérdida</span>
         <span><i style="background:var(--pend)"></i>Apuestas pendientes</span>
-        <span>Cuenta solo apuestas ganadas y perdidas. Cuanto más intenso el color, más dinero.</span>
+        <span><b class="mvk">R</b> Retirada · <b class="mvk">D</b> Depósito</span>
+        <span>Cuenta solo apuestas ganadas y perdidas; las retiradas no son pérdidas. Cuanto más intenso el color, más dinero.</span>
       </p>
     </div>
     <div id="calDetail"></div>
@@ -285,7 +330,7 @@ input,select{font:inherit;font-size:17px;color:var(--ink);background:var(--surfa
 const CFG=window.APP_CONFIG||{};
 const SUPA=!!(CFG.supabaseUrl&&CFG.supabaseAnonKey);
 const BASE=SUPA?String(CFG.supabaseUrl).replace(/\/+$/,""):"";
-const S={calY:null,calM:null,calDay:null,bets:[],bank0:1000,mode:SUPA?"supa":"local",authed:false,status:SUPA?"loading":"local",editing:null,confirmDel:null,filter:"todas",email:"",busy:0};
+const S={movs:[],movMissing:false,formKind:"apuesta",editingMov:null,calY:null,calM:null,calDay:null,bets:[],bank0:1000,mode:SUPA?"supa":"local",authed:false,status:SUPA?"loading":"local",editing:null,confirmDel:null,filter:"todas",email:"",busy:0};
 const RES=["pendiente","ganada","perdida","nula"];
 const RLAB={pendiente:"Pendiente",ganada:"Ganada",perdida:"Perdida",nula:"Nula"};
 const $=id=>document.getElementById(id);
@@ -316,12 +361,23 @@ function clean(d){
     date:String(d.date||"").slice(0,10),result:RES.includes(d.result)?d.result:"pendiente",createdAt:String(d.createdAt||"")};
 }
 
+const KINDS=["retirada","deposito"];
+const KLAB={retirada:"Retirada",deposito:"Depósito"};
+function cleanMov(d){
+  return {id:String(d.id),kind:KINDS.includes(d.kind)?d.kind:"retirada",amount:Number(d.amount)||0,
+    date:String(d.date||"").slice(0,10),note:String(d.note||"").slice(0,60),createdAt:String(d.createdAt||"")};
+}
+const movDelta=m=>m.kind==="deposito"?m.amount:-m.amount;   // efecto en el dinero de la casa
+
 /* --- modo local: localStorage --- */
 const LS_KEY="mibank.datos.v1";
 const Local={
-  read(){try{const d=JSON.parse(localStorage.getItem(LS_KEY)||"null")||{};return {bets:Array.isArray(d.bets)?d.bets:[],bank0:Number(d.bank0)>0?Number(d.bank0):1000}}catch(e){return {bets:[],bank0:1000}}},
+  read(){try{const d=JSON.parse(localStorage.getItem(LS_KEY)||"null")||{};return {bets:Array.isArray(d.bets)?d.bets:[],movs:Array.isArray(d.movs)?d.movs:[],bank0:Number(d.bank0)>0?Number(d.bank0):1000}}catch(e){return {bets:[],movs:[],bank0:1000}}},
   write(d){try{localStorage.setItem(LS_KEY,JSON.stringify(d))}catch(e){throw new Error("Este navegador no permite guardar datos.")}},
-  async load(){const d=this.read();return {bets:d.bets.map(clean),bank0:d.bank0}},
+  async load(){const d=this.read();return {bets:d.bets.map(clean),movs:d.movs.map(cleanMov),bank0:d.bank0}},
+  async addMov(rows){const d=this.read();rows.forEach(r=>d.movs.push({id:uid(),...r,createdAt:new Date().toISOString()}));this.write(d)},
+  async updateMov(id,patch){const d=this.read();const m=d.movs.find(x=>x.id===id);if(m)Object.assign(m,patch);this.write(d)},
+  async removeMov(id){const d=this.read();d.movs=d.movs.filter(x=>x.id!==id);this.write(d)},
   async add(rows){const d=this.read();rows.forEach(r=>d.bets.push({id:uid(),...r,createdAt:new Date().toISOString()}));this.write(d)},
   async update(id,patch){const d=this.read();const b=d.bets.find(x=>x.id===id);if(b)Object.assign(b,patch);this.write(d)},
   async remove(id){const d=this.read();d.bets=d.bets.filter(x=>x.id!==id);this.write(d)},
@@ -370,15 +426,28 @@ async function authed(path,o){
 const toRow=b=>({match:b.match,stake:b.stake,odds:b.odds,bet_date:b.date,result:b.result});
 const toPatch=p=>{const o={};if("match"in p)o.match=p.match;if("stake"in p)o.stake=p.stake;if("odds"in p)o.odds=p.odds;if("date"in p)o.bet_date=p.date;if("result"in p)o.result=p.result;return o};
 const fromRow=r=>clean({id:r.id,match:r.match,stake:r.stake,odds:r.odds,date:r.bet_date,result:r.result,createdAt:r.created_at});
+const toMovRow=m=>{const o={};if("kind"in m)o.kind=m.kind;if("amount"in m)o.amount=m.amount;if("date"in m)o.mov_date=m.date;if("note"in m)o.note=m.note;return o};
+const fromMovRow=r=>cleanMov({id:r.id,kind:r.kind,amount:r.amount,date:r.mov_date,note:r.note,createdAt:r.created_at});
 const Supa={
   async signIn(email,password){const r=await http("/auth/v1/token?grant_type=password",{method:"POST",body:{email,password}});setSession(toSession(r))},
   async signOut(){const s=getSession();setSession(null);if(s){try{await http("/auth/v1/logout",{method:"POST",token:s.access_token})}catch(e){}}},
   async list(){const out=[];for(let off=0;;off+=1000){const rows=await authed("/rest/v1/bets?select=*&order=bet_date.asc,created_at.asc&limit=1000&offset="+off);out.push(...rows);if(rows.length<1000)break}return out},
-  async load(){
-    const [rows,st]=await Promise.all([this.list(),authed("/rest/v1/settings?select=initial_bank&limit=1")]);
-    const v=st&&st[0]?Number(st[0].initial_bank):0;
-    return {bets:rows.map(fromRow),bank0:v>0?v:1000};
+  async listMov(){
+    try{const out=[];for(let off=0;;off+=1000){const rows=await authed("/rest/v1/movements?select=*&order=mov_date.asc,created_at.asc&limit=1000&offset="+off);out.push(...rows);if(rows.length<1000)break}
+      S.movMissing=false;return out}
+    catch(e){ // la tabla aún no existe (falta pegar movimientos.sql): la web sigue funcionando sin movimientos
+      const code=e&&e.data&&e.data.code;
+      if(e&&(e.status===404||code==="PGRST205"||code==="42P01")){S.movMissing=true;return []}
+      throw e}
   },
+  async load(){
+    const [rows,st,mv]=await Promise.all([this.list(),authed("/rest/v1/settings?select=initial_bank&limit=1"),this.listMov()]);
+    const v=st&&st[0]?Number(st[0].initial_bank):0;
+    return {bets:rows.map(fromRow),movs:mv.map(fromMovRow),bank0:v>0?v:1000};
+  },
+  async addMov(rows){for(let i=0;i<rows.length;i+=200)await authed("/rest/v1/movements",{method:"POST",body:rows.slice(i,i+200).map(toMovRow),headers:{Prefer:"return=minimal"}})},
+  async updateMov(id,patch){await authed("/rest/v1/movements?id=eq."+encodeURIComponent(id),{method:"PATCH",body:toMovRow(patch),headers:{Prefer:"return=minimal"}})},
+  async removeMov(id){await authed("/rest/v1/movements?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:{Prefer:"return=minimal"}})},
   async add(rows){for(let i=0;i<rows.length;i+=200)await authed("/rest/v1/bets",{method:"POST",body:rows.slice(i,i+200).map(toRow),headers:{Prefer:"return=minimal"}})},
   async update(id,patch){await authed("/rest/v1/bets?id=eq."+encodeURIComponent(id),{method:"PATCH",body:toPatch(patch),headers:{Prefer:"return=minimal"}})},
   async remove(id){await authed("/rest/v1/bets?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:{Prefer:"return=minimal"}})},
@@ -410,9 +479,25 @@ function compute(){
     return {name,n:r.length,w:r.filter(b=>b.result==="ganada").length,st,p,roi:st?p/st:0}});
   const mm={};res.forEach(b=>{const k=(b.date||"").slice(0,7)||"sin fecha";(mm[k]=mm[k]||{n:0,w:0,st:0,p:0});mm[k].n++;if(b.result==="ganada")mm[k].w++;mm[k].st+=b.stake;mm[k].p+=pl(b)});
   const months=Object.keys(mm).sort().reverse().map(k=>({k,...mm[k],roi:mm[k].st?mm[k].p/mm[k].st:0}));
-  return {bank0,all,res,won,lost,pend,nul,staked,profit,gross,lossG,n,hit,avgOdds,implied,inPlay,bank:bank0+profit,
+  // retiradas y depósitos: no son ganancias ni pérdidas, solo mueven dinero entre la casa y tu bolsillo
+  const movs=[...S.movs].sort(byDate);
+  const wds=movs.filter(m=>m.kind==="retirada"), deps=movs.filter(m=>m.kind==="deposito");
+  const W=wds.reduce((s,m)=>s+m.amount,0), D=deps.reduce((s,m)=>s+m.amount,0);
+  const contributed=bank0+D, house=contributed+profit-W;
+  // curva: apuestas resueltas y movimientos en orden de fecha
+  if(movs.length){
+    const ev=[...res.map(b=>({date:b.date,createdAt:b.createdAt,b})),...movs.map(m=>({date:m.date,createdAt:m.createdAt,m}))].sort(byDate);
+    let cp=0,hb=bank0;series.length=0;series.push({x:0,y:bank0,h:bank0});
+    ev.forEach((e,i)=>{if(e.b){cp+=pl(e.b);hb+=pl(e.b)}else hb+=movDelta(e.m);series.push({x:i+1,y:bank0+cp,h:hb,m:e.m||null})});
+  }else series.forEach(p=>p.h=p.y);
+  const mv={};movs.forEach(m=>{const k=(m.date||"").slice(0,7)||"sin fecha";(mv[k]=mv[k]||{w:0,d:0});if(m.kind==="retirada")mv[k].w+=m.amount;else mv[k].d+=m.amount});
+  const movMonths=[...new Set([...Object.keys(mv),...Object.keys(mm)])].sort().reverse()
+    .map(k=>({k,p:mm[k]?mm[k].p:0,w:mv[k]?mv[k].w:0,d:mv[k]?mv[k].d:0}));
+  return {bank0,all,res,won,lost,pend,nul,staked,profit,gross,lossG,n,hit,avgOdds,implied,inPlay,bank:house,betBank:bank0+profit,
+    movs,wds,deps,W,D,contributed,recovered:contributed?W/contributed:0,atRisk:Math.max(0,contributed-W),
+    secured:profit>0?Math.min(W,profit):0,stillIn:profit>0?Math.max(0,profit-W):0,movMonths,
     peak,maxDD,maxDDp,cur,bestW,worstL,best,worst,avgStake,ranges,months,series,
-    roi:staked?profit/staked:0,growth:bank0?profit/bank0:0,units:bank0?profit/(bank0/100):0,
+    roi:staked?profit/staked:0,growth:contributed?profit/contributed:0,units:bank0?profit/(bank0/100):0,
     be:hit?1/hit:0,edge:n?hit-implied:0,pf:lossG?gross/lossG:null};
 }
 
@@ -425,17 +510,18 @@ function render(){
   $("hBank").textContent=fE(c.bank);
   $("hDelta").textContent=fS(c.profit)+"  ("+fPS(c.growth)+")";
   $("hDelta").className="delta num "+cls(c.profit);
-  $("hSub").textContent="Bank inicial "+fE(c.bank0)+(c.inPlay?" · "+fE(c.inPlay)+" en juego":"");
+  $("hSub").textContent="Bank inicial "+fE(c.bank0)+(c.D?" · depositado "+fE(c.D):"")+(c.W?" · retirado "+fE(c.W):"")+(c.inPlay?" · "+fE(c.inPlay)+" en juego":"");
   $("syncNote").textContent={local:"Solo en este dispositivo",loading:"Sincronizando…",ok:"Sincronizado",offline:"Sin conexión"}[S.status]||"";
   $("bLogout").hidden=S.mode!=="supa";
   $("whoami").textContent=S.mode==="supa"&&S.email?"Sesión iniciada como "+S.email+".":"";
   const bn=$("banner");
   if(S.mode==="local"){bn.hidden=false;bn.textContent="Modo local: tus apuestas se guardan solo en este navegador y no se ven desde otros dispositivos. Para tenerlas en el móvil y en el ordenador, conecta la base de datos (ver LEEME.md)."}
+  else if(S.movMissing){bn.hidden=false;bn.innerHTML="Para anotar retiradas y depósitos falta un paso: en Supabase abre <b>SQL Editor</b>, pega el contenido de <b>supabase/movimientos.sql</b> y pulsa <b>Run</b>. Tus apuestas funcionan con normalidad."}
   else if(S.status==="offline"){bn.hidden=false;bn.textContent="No hay conexión con la base de datos. Lo que ves puede no estar al día y los cambios no se guardarán hasta que vuelva."}
   else bn.hidden=true;
-  renderKpis(c);renderChart(c);renderPending(c);renderLists(c);renderTables(c);renderHistory(c);renderCalendar(c);
+  renderKpis(c);renderChart(c);renderPending(c);renderLists(c);renderTables(c);renderHistory(c);renderCalendar(c);renderMoves(c);
   if(document.activeElement!==$("iBank0"))$("iBank0").value=fN(c.bank0,2);
-  updatePreview();
+  updatePreview();updateMovPreview();
 }
 
 function kpi(l,v,s,cl){return `<div class="kpi"><div class="l">${l}</div><div class="v num ${cl||""}">${v}</div>${s?`<div class="s">${s}</div>`:""}</div>`}
@@ -462,24 +548,30 @@ function renderChart(c){
   const box=$("chartBox"), s=c.series;
   if(s.length<2){box.innerHTML=`<div class="empty">La curva del bank aparece cuando resuelvas tu primera apuesta (ganada o perdida).</div>`;return}
   const W=Math.max(300,box.clientWidth||600), H=240, L=58, R=16, T=14, B=26;
-  const ys=s.map(p=>p.y), ticks=niceTicks(Math.min(...ys,c.bank0),Math.max(...ys,c.bank0),4);
+  const hasM=c.movs.length>0;
+  const ys=s.flatMap(p=>[p.y,p.h]), ticks=niceTicks(Math.min(...ys,c.bank0),Math.max(...ys,c.bank0),4);
   const y0=ticks[0], y1=ticks[ticks.length-1], xMax=s[s.length-1].x;
   const X=x=>L+(W-L-R)*(x/xMax), Y=y=>T+(H-T-B)*(1-(y-y0)/(y1-y0||1));
-  const line=s.map((p,i)=>(i?"L":"M")+X(p.x).toFixed(1)+" "+Y(p.y).toFixed(1)).join("");
+  const line=s.map((p,i)=>(i?"L":"M")+X(p.x).toFixed(1)+" "+Y(p.h).toFixed(1)).join("");
+  const betLine=hasM?s.map((p,i)=>(i?"L":"M")+X(p.x).toFixed(1)+" "+Y(p.y).toFixed(1)).join(""):"";
   const area=line+`L${X(xMax).toFixed(1)} ${Y(y0).toFixed(1)}L${X(0).toFixed(1)} ${Y(y0).toFixed(1)}Z`;
-  const last=s[s.length-1], up=last.y>=c.bank0, col=up?"var(--win)":"var(--loss)";
+  const last=s[s.length-1], up=c.profit>=0, col=up?"var(--win)":"var(--loss)";
   const xt=[];const stepX=Math.max(1,Math.ceil(xMax/6));for(let x=0;x<=xMax;x+=stepX)xt.push(x);if(xt[xt.length-1]!==xMax)xt.push(xMax);
   const lx=X(last.x), anchor=lx>W-90?"end":"start", ldx=anchor==="end"?-8:8;
-  box.innerHTML=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del bank desde ${fE(c.bank0)} hasta ${fE(last.y)}">
+  box.innerHTML=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del bank desde ${fE(c.bank0)} hasta ${fE(last.h)}">
     <defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".22"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
     ${ticks.map(t=>`<line x1="${L}" x2="${W-R}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--line)" stroke-width="1"/><text x="${L-8}" y="${Y(t)+4}" text-anchor="end">${fN(t,0)} €</text>`).join("")}
     ${xt.map(x=>`<text x="${X(x)}" y="${H-6}" text-anchor="middle">${x}</text>`).join("")}
     <line x1="${L}" x2="${W-R}" y1="${Y(c.bank0)}" y2="${Y(c.bank0)}" stroke="var(--muted)" stroke-dasharray="4 4" stroke-width="1"/>
     <path d="${area}" fill="url(#gA)"/>
+    ${hasM?`<path d="${betLine}" fill="none" stroke="var(--ink)" stroke-opacity=".55" stroke-width="1.5" stroke-dasharray="5 4" stroke-linejoin="round"/>`:""}
     <path d="${line}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-    <circle cx="${lx}" cy="${Y(last.y)}" r="5" fill="${col}" stroke="var(--surface)" stroke-width="2"/>
-    <text x="${lx+ldx}" y="${Math.max(T+10,Y(last.y)-10)}" text-anchor="${anchor}" style="fill:var(--ink);font-weight:600;font-size:12px">${fE(last.y)}</text>
-  </svg><p class="hint">Eje horizontal: nº de apuesta resuelta. Línea discontinua: bank inicial.</p>`;
+    ${hasM?s.filter(p=>p.m).map(p=>`<rect x="${(X(p.x)-4).toFixed(1)}" y="${(Y(p.h)-4).toFixed(1)}" width="8" height="8" rx="1.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"><title>${KLAB[p.m.kind]} ${fE(p.m.amount)} · ${fDate(p.m.date)}</title></rect>`).join(""):""}
+    <circle cx="${lx}" cy="${Y(last.h)}" r="5" fill="${col}" stroke="var(--surface)" stroke-width="2"/>
+    <text x="${lx+ldx}" y="${Math.max(T+10,Y(last.h)-10)}" text-anchor="${anchor}" style="fill:var(--ink);font-weight:600;font-size:12px">${fE(last.h)}</text>
+  </svg><p class="hint">${hasM
+    ?"Línea de color: dinero en la casa (baja al retirar, sube al depositar; cuadrados = movimientos). Línea gris discontinua: solo el resultado de tus apuestas, como si no hubieras retirado nada. Eje horizontal: apuestas resueltas y movimientos, por fecha."
+    :"Eje horizontal: nº de apuesta resuelta. Línea discontinua: bank inicial."}</p>`;
 }
 
 function chips(b){
@@ -503,7 +595,7 @@ function renderPending(c){
 function dl(rows){return rows.map(([t,sub,v,cl])=>`<dt>${t}${sub?`<small>${sub}</small>`:""}</dt><dd class="${cl||""}">${v}</dd>`).join("")}
 function renderLists(c){
   $("lRent").innerHTML=dl([
-    ["Bank actual","inicial + beneficio",fE(c.bank)],
+    ["Bank en la casa",c.movs.length?"inicial + depósitos + beneficio − retiradas":"inicial + beneficio",fE(c.bank)],
     ["Beneficio neto","",fS(c.profit),cls(c.profit)],
     ["Beneficio en unidades","1 u = "+fE(c.bank0/100),(c.units>=0?"+":"−")+fN(Math.abs(c.units),2)+" u",cls(c.units)],
     ["Total apostado","solo resueltas",fE(c.staked)],
@@ -535,10 +627,60 @@ function renderTables(c){
 }
 function renderHistory(c){
   const F=[["todas","Todas"],["pendiente","Pendientes"],["ganada","Ganadas"],["perdida","Perdidas"],["nula","Nulas"]];
-  $("filters").innerHTML=F.map(([k,l])=>{const n=k==="todas"?c.all.length:c.all.filter(b=>b.result===k).length;return `<button class="chip ${S.filter===k?"on":""}" data-r="${k==="todas"?"pendiente":k}" data-act="filter" data-f="${k}" aria-pressed="${S.filter===k}">${l} · ${n}</button>`}).join("");
-  const list=[...c.all].reverse().filter(b=>S.filter==="todas"||b.result===S.filter);
-  $("slips").innerHTML=list.length?list.map(b=>slip(b,{tag:true})).join("")
-    :`<div class="empty">${c.all.length?"No hay apuestas con este filtro.":"Todavía no hay apuestas. Añade la primera en la pestaña <b>Nueva</b>: partido, importe y cuota."}</div>`;
+  if(c.movs.length)F.push(["mov","Retiradas/depósitos"]);
+  if(S.filter==="mov"&&!c.movs.length)S.filter="todas";
+  $("filters").innerHTML=F.map(([k,l])=>{const n=k==="todas"?c.all.length+c.movs.length:k==="mov"?c.movs.length:c.all.filter(b=>b.result===k).length;return `<button class="chip ${S.filter===k?"on":""}" data-r="${k==="todas"?"pendiente":k}" data-act="filter" data-f="${k}" aria-pressed="${S.filter===k}">${l} · ${n}</button>`}).join("");
+  const items=S.filter==="mov"?c.movs.map(m=>({date:m.date,createdAt:m.createdAt,m}))
+    :S.filter==="todas"?[...c.all.map(b=>({date:b.date,createdAt:b.createdAt,b})),...c.movs.map(m=>({date:m.date,createdAt:m.createdAt,m}))]
+    :c.all.filter(b=>b.result===S.filter).map(b=>({date:b.date,createdAt:b.createdAt,b}));
+  const list=items.sort(byDate).reverse();
+  $("slips").innerHTML=list.length?list.map(x=>x.m?movSlip(x.m):slip(x.b,{tag:true})).join("")
+    :`<div class="empty">${c.all.length||c.movs.length?"No hay apuestas con este filtro.":"Todavía no hay apuestas. Añade la primera en la pestaña <b>Nueva</b>: partido, importe y cuota."}</div>`;
+}
+
+/* ================= RETIRADAS Y DEPÓSITOS ================= */
+function movSlip(m){
+  const del=S.confirmDel===m.id
+    ?`<span class="hint">¿Borrar?</span><button class="linkbtn danger" data-act="mdelyes" data-id="${esc(m.id)}">Sí, borrar</button><button class="linkbtn" data-act="delno">No</button>`
+    :`<button class="linkbtn" data-act="medit" data-id="${esc(m.id)}">Editar</button><button class="linkbtn" data-act="mdel" data-id="${esc(m.id)}">Borrar</button>`;
+  return `<article class="slip"><div class="slip-head"><div style="min-width:0"><div class="slip-title">${KLAB[m.kind]}${m.note?" · "+esc(m.note):""}</div>
+    <div class="slip-meta num">${fDate(m.date)} · <span class="tag ${m.kind}">${m.kind==="retirada"?"A tu bolsillo":"A la casa"}</span></div></div>
+    <div class="slip-pl mv num">${m.kind==="retirada"?"−":"+"}${fE(m.amount)}</div></div>
+    <div class="slip-actions"><span class="hint">${m.kind==="retirada"?"Sale de la casa · no cuenta como pérdida":"Entra en la casa · no cuenta como ganancia"}</span><span class="spacer"></span>${canWrite()?del:""}</div></article>`;
+}
+function renderMoves(c){
+  const box=$("movPanel");
+  const head=`<div class="movhead"><h2>Retiradas y depósitos</h2><button class="linkbtn" type="button" data-act="gomov" data-k="retirada">+ Anotar retirada</button></div>`;
+  if(!c.movs.length){
+    box.innerHTML=head+`<div class="empty" style="margin-top:12px">Cuando saques dinero de la casa, anótalo en <b>Nueva → Retirada</b>. Verás cuánto has asegurado y cuánto te falta para recuperar tu inversión. Las retiradas no cambian tu beneficio ni tu yield.</div>`;
+    return;
+  }
+  const pct=Math.min(1,c.recovered), last=c.wds.length?c.wds[c.wds.length-1]:null;
+  const msg=c.recovered>=1
+    ?"Ya has sacado todo lo que metiste: lo que queda en la casa son ganancias."
+    :"Te faltan "+fE(c.contributed-c.W)+" por retirar para no poder perder dinero tuyo.";
+  const rows=[
+    ["Bank en la casa","lo que tienes para apostar",fE(c.bank)],
+    ["Total retirado",c.wds.length+" "+(c.wds.length===1?"retirada":"retiradas")+(c.wds.length?" · media "+fE(c.W/c.wds.length):""),fE(c.W)],
+    ["Total depositado",c.deps.length+" "+(c.deps.length===1?"depósito":"depósitos")+" aparte del bank inicial",fE(c.D)],
+    ["Capital aportado","bank inicial + depósitos",fE(c.contributed)],
+    ["Dinero propio en riesgo","lo que aún podrías perder de tu bolsillo",fE(c.atRisk)],
+    ["Beneficio asegurado","parte del beneficio ya retirada",c.profit>0?fE(c.secured)+" · "+fP(c.secured/c.profit,0):"–"],
+    ["Beneficio aún en la casa","ganancia que todavía podrías perder",c.profit>0?fE(c.stillIn):"–"],
+    ["Resultado total","casa + retirado − aportado",fS(c.profit),cls(c.profit)],
+    ["Última retirada",last?fDate(last.date):"",last?fE(last.amount):"–"],
+  ];
+  const tbl=`<table><thead><tr><th>Mes</th><th>Beneficio</th><th>Retirado</th>${c.D?"<th>Depositado</th>":""}</tr></thead><tbody>${
+    c.movMonths.map(m=>{const[y,mo]=m.k.split("-");const name=mo?MES[+mo-1]+" "+y:m.k;
+      const e0=v=>fN(v,0)+" €";
+      return `<tr><td>${name}</td><td class="${cls(m.p)}">${(m.p>0.5?"+":m.p<-0.5?"−":"")+e0(Math.abs(m.p))}</td><td>${m.w?e0(m.w):"–"}</td>${c.D?`<td>${m.d?e0(m.d):"–"}</td>`:""}</tr>`}).join("")}</tbody></table>`;
+  box.innerHTML=head+`<div class="movgrid"><div>
+      <div class="rec"><span class="hint" style="text-transform:uppercase;letter-spacing:.08em;font-weight:600;font-size:11px">Inversión recuperada</span><b class="num">${fP(c.recovered,0)}</b></div>
+      <div class="prog" role="progressbar" aria-label="Inversión recuperada" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct*100)}"><i style="width:${(pct*100).toFixed(1)}%"></i></div>
+      <p class="hint">Has retirado ${fE(c.W)} de ${fE(c.contributed)} aportados. ${msg}</p>
+      <dl class="list" style="margin-top:10px">${dl(rows)}</dl>
+    </div><div><h2 style="font-size:16px">Por mes</h2><div class="scroll">${tbl}</div>
+      <p class="hint" style="margin-top:10px">Las retiradas y los depósitos no cuentan en el beneficio, el yield ni el acierto: solo cambian el dinero que tienes en la casa.</p></div></div>`;
 }
 
 /* ================= CALENDARIO ================= */
@@ -557,8 +699,11 @@ function renderCalendar(c){
   // agrupar por día
   const by={};
   c.all.forEach(b=>{if(!b.date||b.date.slice(0,7)!==key)return;const d=+b.date.slice(8,10);
-    const o=by[d]||(by[d]={p:0,res:0,pend:0,bets:[]});o.bets.push(b);
+    const o=by[d]||(by[d]={p:0,res:0,pend:0,bets:[],movs:[]});o.bets.push(b);
     if(isRes(b)){o.p+=pl(b);o.res++}else if(b.result==="pendiente")o.pend++});
+  let mW=0;
+  c.movs.forEach(mv=>{if(!mv.date||mv.date.slice(0,7)!==key)return;const d=+mv.date.slice(8,10);
+    const o=by[d]||(by[d]={p:0,res:0,pend:0,bets:[],movs:[]});o.movs.push(mv);if(mv.kind==="retirada")mW+=mv.amount});
   const days=Object.keys(by).map(Number).filter(d=>by[d].res>0);
   const total=days.reduce((s,d)=>s+by[d].p,0);
   const pos=days.filter(d=>by[d].p>0.005).length, neg=days.filter(d=>by[d].p<-0.005).length;
@@ -567,12 +712,12 @@ function renderCalendar(c){
   const maxAbs=Math.max(1,...days.map(d=>Math.abs(by[d].p)));
   // cabecera y navegación
   $("calTitle").textContent=cap(MESES_L[m])+" "+y;
-  const latest=c.all.reduce((mx,b)=>b.date&&b.date.slice(0,7)>mx?b.date.slice(0,7):mx,ymKey(now.getFullYear(),now.getMonth()));
+  const latest=[...c.all,...c.movs].reduce((mx,b)=>b.date&&b.date.slice(0,7)>mx?b.date.slice(0,7):mx,ymKey(now.getFullYear(),now.getMonth()));
   $("calNext").disabled=key>=latest;
   // tarjetas del mes
   const dl=d=>d+" "+MES[m];
   $("calKpis").innerHTML=[
-    kpi("Beneficio del mes",days.length?fS(total):"–",days.length+" "+(days.length===1?"día":"días")+" con apuestas resueltas",cls(total)),
+    kpi("Beneficio del mes",days.length?fS(total):"–",days.length+" "+(days.length===1?"día":"días")+" con apuestas resueltas"+(mW?" · retirado "+fE(mW):""),cls(total)),
     kpi("Días en verde / rojo",pos+" / "+neg,"días con beneficio / con pérdida"),
     kpi("Mejor día",best?fS(by[best].p):"–",best?dl(best):"",best?cls(by[best].p):""),
     kpi("Peor día",worst?fS(by[worst].p):"–",worst?dl(worst):"",worst?cls(by[worst].p):"")
@@ -591,10 +736,12 @@ function renderCalendar(c){
       k=o.p>0.005?"pos":o.p<-0.005?"neg":"zero";val=fShort(o.p);
       label=d+" de "+MESES_L[m]+": "+fS(o.p)+(o.pend?", "+o.pend+" pendientes":"");
     }else if(o&&o.pend>0){k="pendonly";val="pend.";label=d+" de "+MESES_L[m]+": "+o.pend+" apuestas pendientes"}
-    else if(o){k="zero";val="0";label=d+" de "+MESES_L[m]+": apuestas nulas"}
+    else if(o&&o.bets.length){k="zero";val="0";label=d+" de "+MESES_L[m]+": apuestas nulas"}
+    const mk=o&&o.movs.length?[...new Set(o.movs.map(x=>x.kind))].map(x=>x==="retirada"?"R":"D"):[];
+    if(mk.length)label+=" · "+o.movs.map(x=>KLAB[x.kind].toLowerCase()+" "+fE(x.amount)).join(", ");
     const inten=(k==="pos"||k==="neg")?(0.16+0.42*Math.min(1,Math.abs(o.p)/maxAbs)).toFixed(2):0;
     h+=`<button type="button" class="day ${k}${ds===today()?" today":""}${ds===sel?" sel":""}" data-act="day" data-d="${ds}" style="--i:${inten}" aria-label="${esc(label)}" aria-pressed="${ds===sel}">
-      <span class="dn">${d}</span><span class="dv num">${val}</span>${o&&o.pend&&o.res>0?'<span class="pd" title="Con apuestas pendientes"></span>':""}</button>`;
+      <span class="dn">${d}${mk.map(x=>`<b class="mvk">${x}</b>`).join("")}</span><span class="dv num">${val}</span>${o&&o.pend&&o.res>0?'<span class="pd" title="Con apuestas pendientes"></span>':""}</button>`;
   }
   $("calGrid").innerHTML=h;
   // detalle del día
@@ -603,14 +750,14 @@ function renderCalendar(c){
   const dd=+sel.slice(8,10),o=by[dd];
   const title=cap(new Date(y,m,dd).toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long"}));
   const amount=o&&o.res>0?` · <span class="${cls(o.p)}">${fS(o.p)}</span>`:"";
-  det.innerHTML=`<h2>${title}${amount}</h2>`+(o?`<div class="slips">${[...o.bets].reverse().map(b=>slip(b,{tag:true})).join("")}</div>`:`<div class="empty">No hay apuestas este día.</div>`);
+  det.innerHTML=`<h2>${title}${amount}</h2>`+(o?`<div class="slips">${o.movs.map(movSlip).join("")}${[...o.bets].reverse().map(b=>slip(b,{tag:true})).join("")}</div>`:`<div class="empty">No hay apuestas este día.</div>`);
 }
 
 /* ================= DATOS Y ESCRITURA ================= */
 async function refreshData(silent){
   if(S.mode==="supa"&&!S.authed){render();return}
   if(!silent&&S.mode==="supa"){S.status="loading";render()}
-  try{const d=await Store.load();S.bets=d.bets;S.bank0=d.bank0;S.status=SUPA?"ok":"local"}
+  try{const d=await Store.load();S.bets=d.bets;S.movs=d.movs||[];S.bank0=d.bank0;S.status=SUPA?"ok":"local"}
   catch(e){if(e&&e.code==="AUTH"){S.authed=false}else S.status="offline"}
   render();
 }
@@ -636,12 +783,71 @@ function updatePreview(){
   $("pPct").textContent=st>0?fP(st/compute().bank,1):"–";
   $("pProb").textContent=od>1?fP(1/od,1):"–";
 }
+/* --- retirada / depósito --- */
+function setKind(k){
+  S.formKind=k;
+  $("fBet").hidden=k!=="apuesta";$("fMov").hidden=k==="apuesta";
+  document.querySelectorAll("#kindSeg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.k===k)));
+  if(k!=="apuesta"){
+    const ed=!!S.editingMov;
+    $("movTitle").textContent=(ed?"Editar ":k==="retirada"?"Nueva ":"Nuevo ")+(k==="retirada"?"retirada":"depósito");
+    $("bSaveMov").textContent=ed?"Guardar cambios":"Guardar "+(k==="retirada"?"retirada":"depósito");
+    $("movHelp").textContent=k==="retirada"
+      ?"Dinero que sacas de la casa de apuestas a tu bolsillo. No cuenta como pérdida."
+      :"Dinero que vuelves a meter en la casa. No cuenta como ganancia.";
+    $("mThirdL").textContent=k==="retirada"?"Recuperado":"Aportado";
+  }
+  $("movErr").textContent="";updateMovPreview();
+}
+function movBase(){ // dinero en la casa sin contar el movimiento que se está editando
+  const c=compute(),m=S.editingMov&&S.movs.find(x=>x.id===S.editingMov);
+  return {c,base:c.bank-(m?movDelta(m):0),W:c.W-(m&&m.kind==="retirada"?m.amount:0),contributed:c.contributed-(m&&m.kind==="deposito"?m.amount:0)};
+}
+function updateMovPreview(){
+  if(!$("fMov")||$("fMov").hidden)return;
+  const a=parseNum($("mAmount").value),k=S.formKind,{base,W,contributed}=movBase();
+  $("mNow").textContent=fE(base);
+  const ok=a>0;
+  $("mAfter").textContent=ok?fE(base+(k==="deposito"?a:-a)):"–";
+  $("mAfter").className="num"+(ok&&k==="retirada"&&a>base+0.005?" neg":"");
+  $("mThird").textContent=k==="retirada"?fP(contributed?(W+(ok?a:0))/contributed:0,0):fE(contributed+(ok?a:0));
+}
+function resetMovForm(){
+  S.editingMov=null;$("fMov").reset();$("mDate").value=today();$("bCancelMov").hidden=true;$("movErr").textContent="";
+  $("kindSeg").hidden=!!S.editing;setKind(S.formKind);
+}
+function startEditMov(id){
+  const m=S.movs.find(x=>x.id===id);if(!m)return;
+  if(S.editing)resetForm();
+  S.editingMov=id;$("mAmount").value=fN(m.amount);$("mDate").value=m.date||today();$("mNote").value=m.note||"";
+  $("bCancelMov").hidden=false;$("kindSeg").hidden=true;setKind(m.kind);location.hash="nueva";
+}
+$("fMov").addEventListener("input",updateMovPreview);
+$("bCancelMov").addEventListener("click",()=>{resetMovForm();location.hash="historial"});
+$("fMov").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const amount=parseNum($("mAmount").value),date=$("mDate").value||today(),note=$("mNote").value.trim().slice(0,60),kind=S.formKind,err=$("movErr");
+  if(!(amount>0)){err.textContent="El importe tiene que ser un número mayor que 0.";$("mAmount").focus();return}
+  const {base}=movBase();
+  if(kind==="retirada"&&amount>base+0.005){err.textContent="Es más de lo que tienes en la casa ("+fE(base)+"). Si metiste dinero, anota antes un depósito.";$("mAmount").focus();return}
+  if(S.movMissing){err.textContent="Falta crear la tabla de retiradas en Supabase (mira el aviso de arriba).";return}
+  if(!canWrite()){err.textContent="Inicia sesión para guardar.";return}
+  err.textContent="";$("bSaveMov").disabled=true;
+  const body={kind,amount:Math.round(amount*100)/100,date,note},editing=S.editingMov;
+  const ok=await write(()=>editing?Store.updateMov(editing,body):Store.addMov([body]),editing?"Cambios guardados":kind==="retirada"?"Retirada guardada":"Depósito guardado");
+  $("bSaveMov").disabled=false;
+  if(ok){resetMovForm();if(editing)location.hash="historial"}
+});
+
 function resetForm(){
   S.editing=null;$("fBet").reset();$("iDate").value=today();$("formTitle").textContent="Nueva apuesta";
   $("bSave").textContent="Guardar apuesta";$("bCancel").hidden=true;$("formErr").textContent="";updatePreview();
+  if($("kindSeg"))$("kindSeg").hidden=!!S.editingMov;
 }
 function startEdit(id){
   const b=S.bets.find(x=>x.id===id);if(!b)return;
+  if(S.editingMov)resetMovForm();
+  setKind("apuesta");$("kindSeg").hidden=true;
   S.editing=id;$("iMatch").value=b.match;$("iStake").value=fN(b.stake);$("iOdds").value=String(b.odds).replace(".",",");
   $("iDate").value=b.date||today();$("iResult").value=b.result;$("formTitle").textContent="Editar apuesta";
   $("bSave").textContent="Guardar cambios";$("bCancel").hidden=false;updatePreview();location.hash="nueva";
@@ -692,9 +898,16 @@ function parseImport(text){
   const norm=s=>String(s||"").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
   const head=rows[0].map(norm), idx=(...n)=>head.findIndex(h=>n.includes(h));
   const iD=idx("fecha","date"),iM=idx("partido","match","evento"),iS=idx("importe","stake","apostado"),iO=idx("cuota","odds"),iR=idx("resultado","result");
-  if(iM<0||iS<0||iO<0)return {rows:[],invalid:rows.length-1};
-  const out=[];let invalid=0;
+  if(iM<0||iS<0||iO<0)return {rows:[],movs:[],invalid:rows.length-1};
+  const out=[],movs=[];let invalid=0;
   rows.slice(1).forEach(r=>{
+    const kr=norm(iR>=0?r[iR]:"");
+    if(kr==="retirada"||kr==="deposito"){   // filas de movimientos (las exporta la propia web)
+      const amount=parseNum(r[iS]);if(!(amount>0)){invalid++;return}
+      let date=iD>=0?String(r[iD]||"").trim():"";const m=date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if(m)date=m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");if(!/^\d{4}-\d{2}-\d{2}$/.test(date))date=today();
+      const note=String(r[iM]||"").trim();
+      movs.push({kind:kr,amount:Math.round(amount*100)/100,date,note:note===KLAB[kr]?"":note.slice(0,60)});return}
     const match=String(r[iM]||"").trim().slice(0,120), stake=parseNum(r[iS]), odds=parseOdds(r[iO]);
     if(!match||!(stake>0)||!(odds>1)){invalid++;return}
     let date=iD>=0?String(r[iD]||"").trim():"";
@@ -705,11 +918,14 @@ function parseImport(text){
     const result={ganada:"ganada",perdida:"perdida",nula:"nula",pendiente:"pendiente"}[rr]||"pendiente";
     out.push({match,stake:Math.round(stake*100)/100,odds:Math.round(odds*1000)/1000,date,result});
   });
-  return {rows:out,invalid};
+  return {rows:out,movs,invalid};
 }
 $("bExport").addEventListener("click",()=>{
   const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
-  const rows=[["Fecha","Partido","Importe","Cuota","Resultado","Beneficio"]].concat([...S.bets].sort(byDate).map(b=>[b.date,b.match,fN(b.stake),fN(b.odds,3),RLAB[b.result],fN(pl(b))]));
+  const items=[...S.bets.map(b=>({date:b.date,createdAt:b.createdAt,b})),...S.movs.map(m=>({date:m.date,createdAt:m.createdAt,m}))].sort(byDate);
+  const rows=[["Fecha","Partido","Importe","Cuota","Resultado","Beneficio"]].concat(items.map(({b,m})=>b
+    ?[b.date,b.match,fN(b.stake),fN(b.odds,3),RLAB[b.result],fN(pl(b))]
+    :[m.date,m.note||KLAB[m.kind],fN(m.amount),"",KLAB[m.kind],""]));
   const csv="﻿"+rows.map(r=>r.map(q).join(";")).join("\r\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
   a.download="apuestas-"+today()+".csv";document.body.appendChild(a);a.click();a.remove();
@@ -719,14 +935,16 @@ $("fImport").addEventListener("change",async e=>{
   const f=e.target.files[0];e.target.value="";if(!f||!canWrite())return;
   let text;try{text=await f.text()}catch(x){toast("No se pudo leer el archivo");return}
   const r=parseImport(text);
-  if(!r.rows.length){toast(r.invalid?"No se encontró ninguna fila válida (revisa las columnas)":"El archivo está vacío");return}
+  if(!r.rows.length&&!r.movs.length){toast(r.invalid?"No se encontró ninguna fila válida (revisa las columnas)":"El archivo está vacío");return}
   const key=b=>[b.date,b.match.toLowerCase(),b.stake.toFixed(2),b.odds.toFixed(3)].join("|");
-  const have=new Set(S.bets.map(key));
+  const mkey=m=>[m.date,m.kind,m.amount.toFixed(2),(m.note||"").toLowerCase()].join("|");
+  const have=new Set(S.bets.map(key)),haveM=new Set(S.movs.map(mkey));
   const fresh=r.rows.filter(b=>!have.has(key(b)));
-  const dup=r.rows.length-fresh.length;
-  if(!fresh.length){toast("Esas "+dup+" apuestas ya estaban guardadas");return}
-  const ok=await write(()=>Store.add(fresh));
-  if(ok)toast("Importadas "+fresh.length+" apuestas"+(dup?" · "+dup+" repetidas omitidas":"")+(r.invalid?" · "+r.invalid+" filas no válidas":""));
+  const freshM=S.movMissing?[]:r.movs.filter(m=>!haveM.has(mkey(m)));
+  const dup=r.rows.length-fresh.length+(S.movMissing?0:r.movs.length-freshM.length);
+  if(!fresh.length&&!freshM.length){toast("Esas "+dup+" filas ya estaban guardadas"+(S.movMissing&&r.movs.length?" (las retiradas necesitan su tabla en Supabase)":""));return}
+  const ok=await write(async()=>{if(fresh.length)await Store.add(fresh);if(freshM.length)await Store.addMov(freshM)});
+  if(ok)toast("Importadas "+fresh.length+" apuestas"+(freshM.length?" y "+freshM.length+" movimientos":"")+(dup?" · "+dup+" repetidas omitidas":"")+(r.invalid?" · "+r.invalid+" filas no válidas":""));
 });
 
 /* ---------- acciones sobre apuestas ---------- */
@@ -737,10 +955,15 @@ document.addEventListener("click",async e=>{
   if(act==="calprev"||act==="calnext"){const dt=new Date(S.calY,S.calM+(act==="calnext"?1:-1),1);S.calY=dt.getFullYear();S.calM=dt.getMonth();S.calDay=null;render();return}
   if(act==="caltoday"){const dt=new Date();S.calY=dt.getFullYear();S.calM=dt.getMonth();S.calDay=null;render();return}
   if(act==="day"){S.calDay=(S.calDay===t.dataset.d)?"":t.dataset.d;render();const f=document.querySelector('.day[data-d="'+t.dataset.d+'"]');if(f)f.focus({preventScroll:true});return}
+  if(act==="kind"){if(t.dataset.k!==S.formKind){setKind(t.dataset.k);(t.dataset.k==="apuesta"?$("iMatch"):$("mAmount")).focus()}return}
+  if(act==="gomov"){if(S.editing)resetForm();if(S.editingMov)resetMovForm();setKind(t.dataset.k);location.hash="nueva";setTimeout(()=>$("mAmount").focus(),0);return}
+  if(act==="medit"){startEditMov(id);return}
+  if(act==="mdel"){S.confirmDel=id;render();return}
   if(act==="edit"){startEdit(id);return}
   if(act==="del"){S.confirmDel=id;render();return}
   if(act==="delno"){S.confirmDel=null;render();return}
   if(!canWrite())return;
+  if(act==="mdelyes"){S.confirmDel=null;await write(()=>Store.removeMov(id),"Movimiento borrado");return}
   if(act==="delyes"){S.confirmDel=null;await write(()=>Store.remove(id),"Apuesta borrada");return}
   if(act==="res"){
     const b=S.bets.find(x=>x.id===id),r=t.dataset.r;if(!b||b.result===r)return;
@@ -759,7 +982,7 @@ $("fLogin").addEventListener("submit",async e=>{
   catch(x){err.textContent=(x.status===400||x.status===401||x.status===422)?"Correo o contraseña incorrectos.":"No se pudo conectar. Revisa tu conexión."}
   finally{$("bLogin").disabled=false}
 });
-$("bLogout").addEventListener("click",async()=>{await Supa.signOut();S.authed=false;S.bets=[];S.email="";S.status="loading";render();location.hash="resumen"});
+$("bLogout").addEventListener("click",async()=>{await Supa.signOut();S.authed=false;S.bets=[];S.movs=[];S.email="";S.status="loading";render();location.hash="resumen"});
 
 /* ---------- vistas ---------- */
 const VIEWS=["resumen","nueva","historial","calendario"];
@@ -774,7 +997,7 @@ let rz;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>
 
 /* ---------- arranque ---------- */
 async function boot(){
-  resetForm();
+  resetForm();resetMovForm();
   if(SUPA){
     const s=getSession();
     if(s){S.authed=true;S.email=s.email||""}
@@ -784,7 +1007,7 @@ async function boot(){
   route();
   if(SUPA){
     document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.authed&&!S.busy)refreshData(true)});
-    setInterval(()=>{if(document.visibilityState==="visible"&&S.authed&&!S.busy&&!$("fBet").contains(document.activeElement))refreshData(true)},60000);
+    setInterval(()=>{if(document.visibilityState==="visible"&&S.authed&&!S.busy&&!$("fBet").contains(document.activeElement)&&!$("fMov").contains(document.activeElement))refreshData(true)},60000);
   }
 }
 boot();
