@@ -42,6 +42,15 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python informe/informe_mensual.py
 
+      - name: Guardar el PDF en GitHub (aunque falle el correo)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-mensual
+          path: informe-*.pdf
+          if-no-files-found: ignore
+          retention-days: 90
+
       - name: Dejar constancia (evita que GitHub desactive las tareas programadas)
         run: |
           date -u +%F > informe/ultima-ejecucion.txt
