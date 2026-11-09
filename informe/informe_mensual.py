@@ -532,7 +532,6 @@ def send_email(pdf_path, year, month, m, tot):
     pwd = os.environ.get("SMTP_PASSWORD", "").strip()
     to = os.environ.get("EMAIL_TO", "").strip() or user
     host = os.environ.get("SMTP_HOST", "").strip() or "smtp.gmail.com"
-    port = int(os.environ.get("SMTP_PORT", "").strip() or 465)
     if host == "smtp.gmail.com":
         pwd = pwd.replace(" ", "")  # Google muestra la contraseña de aplicación en bloques con espacios
     if not (user and pwd and to):
@@ -556,20 +555,36 @@ def send_email(pdf_path, year, month, m, tot):
     with open(pdf_path, "rb") as f:
         msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=os.path.basename(pdf_path))
     ctx = ssl.create_default_context()
-    try:
-        if port == 465:
-            with smtplib.SMTP_SSL(host, port, context=ctx, timeout=60) as s:
+    forced = os.environ.get("SMTP_PORT", "").strip()
+    # Si no se indica puerto, se prueba SSL (465) y después STARTTLS (587): Gmail admite los dos.
+    attempts = [int(forced)] if forced.isdigit() else [465, 587]
+    last = ""
+    for port in attempts:
+        stage = "conectar"
+        try:
+            if port == 465:
+                s = smtplib.SMTP_SSL(host, port, context=ctx, timeout=60)
+            else:
+                s = smtplib.SMTP(host, port, timeout=60)
+            with s:
+                if port != 465:
+                    stage = "cifrar (STARTTLS)"
+                    s.ehlo()
+                    s.starttls(context=ctx)
+                    s.ehlo()
+                stage = "iniciar sesión"
                 s.login(user, pwd)
+                stage = "enviar"
                 s.send_message(msg)
-        else:
-            with smtplib.SMTP(host, port, timeout=60) as s:
-                s.starttls(context=ctx)
-                s.login(user, pwd)
-                s.send_message(msg)
-    except smtplib.SMTPAuthenticationError:
-        sys.exit("El correo rechazó el usuario o la contraseña. Con Gmail hay que usar una «contraseña de aplicación».")
-    except (smtplib.SMTPException, OSError) as e:
-        sys.exit(f"No se pudo enviar el correo ({type(e).__name__}).")
+            return
+        except smtplib.SMTPAuthenticationError:
+            sys.exit("El correo rechazó el usuario o la contraseña. Con Gmail hay que usar una «contraseña de aplicación» "
+                     "(SMTP_USER = tu Gmail completo, SMTP_PASSWORD = las 16 letras).")
+        except (smtplib.SMTPException, OSError) as e:
+            detalle = str(e).strip().replace("\n", " ")[:200]
+            last = f"puerto {port}, fallo al {stage}: {type(e).__name__}" + (f" ({detalle})" if detalle else "")
+            print(f"Intento fallido: {last}")
+    sys.exit(f"No se pudo enviar el correo. Último intento: {last}.")
 
 
 # ------------------------------------------------------------------ main
