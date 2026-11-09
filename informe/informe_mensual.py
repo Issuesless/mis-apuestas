@@ -532,8 +532,11 @@ def send_email(pdf_path, year, month, m, tot):
     pwd = os.environ.get("SMTP_PASSWORD", "").strip()
     to = os.environ.get("EMAIL_TO", "").strip() or user
     host = os.environ.get("SMTP_HOST", "").strip() or "smtp.gmail.com"
+    # Se quitan espacios normales, espacios especiales, saltos de línea y caracteres invisibles que se cuelan al copiar y pegar.
+    user = "".join(ch for ch in user if ch.isprintable() and not ch.isspace() and ch.isascii())
+    to = "".join(ch for ch in to if ch.isprintable() and not ch.isspace() and ch.isascii())
     if host == "smtp.gmail.com":
-        pwd = pwd.replace(" ", "")  # Google muestra la contraseña de aplicación en bloques con espacios
+        pwd = "".join(ch for ch in pwd if ch.isalnum() and ch.isascii())  # la clave de aplicación son 16 letras
     if not (user and pwd and to):
         sys.exit("Faltan SMTP_USER, SMTP_PASSWORD o EMAIL_TO. Añádelos en Settings → Secrets del repositorio.")
     title = f"{MESES[month - 1]} de {year}"
@@ -554,6 +557,9 @@ def send_email(pdf_path, year, month, m, tot):
         "Generado automáticamente.\n")
     with open(pdf_path, "rb") as f:
         msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=os.path.basename(pdf_path))
+    # Diagnóstico sin datos sensibles (el registro de Actions es público): solo formato, nunca valores.
+    print(f"Comprobación: SMTP_USER con @ = {'sí' if '@' in user else 'NO'}; EMAIL_TO con @ = {'sí' if '@' in to else 'NO'}; "
+          f"SMTP_PASSWORD de {len(pwd)} caracteres (una contraseña de aplicación de Google tiene 16).")
     ctx = ssl.create_default_context()
     forced = os.environ.get("SMTP_PORT", "").strip()
     # Si no se indica puerto, se prueba SSL (465) y después STARTTLS (587): Gmail admite los dos.
